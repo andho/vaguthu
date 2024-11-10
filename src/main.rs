@@ -1,11 +1,12 @@
 extern crate chrono;
 extern crate timer;
 
-use std::{fs::File, str::FromStr};
 use std::io::BufReader;
 use std::thread;
+use std::{fs::File, str::FromStr};
 
 use chrono::{Duration, Local, NaiveTime};
+use notify_rust::Notification;
 use rodio::{source::Source, Decoder, OutputStream};
 
 struct Schedule {
@@ -42,17 +43,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if dt.cmp(&end) == std::cmp::Ordering::Greater {
-                println!(
-                    "{}: Too late to play sound",
-                    dt.format("%Y-%m-%d %H:%M:%S")
-                );
+                println!("{}: Too late to play sound", dt.format("%Y-%m-%d %H:%M:%S"));
                 return;
             }
 
-            println!("{}: Play sound", dt.format("%Y-%m-%d %H:%M:%S"));
+            let dt_string = dt.format("%Y-%m-%d %H:%M:%S");
+            println!("{}: Play sound", dt_string);
             let file = BufReader::new(File::open("assets/wrist-watch-alarm.mp3").unwrap());
             let source = Decoder::new(file).unwrap();
             let _ = stream_handle.play_raw(source.convert_samples());
+
+            let Ok(_) = Notification::new()
+                .appname("Vaguthu")
+                .summary(&format!("Time for rest: {}", dt_string))
+                .timeout(300000)
+                .show()
+            else {
+                println!("Unable to send notification");
+                return;
+            };
         },
     );
 
