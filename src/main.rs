@@ -1,13 +1,16 @@
 extern crate chrono;
 extern crate timer;
 
-use std::io::BufReader;
+use std::io;
+use std::io::Read;
+use std::str::FromStr;
+use std::sync::Arc;
 use std::thread;
-use std::{fs::File, str::FromStr};
 
 use chrono::{Duration, Local, NaiveTime};
 use notify_rust::Notification;
-use rodio::{source::Source, Decoder, OutputStream};
+use rodio::Sink;
+use rodio::{source::Source, OutputStream};
 
 struct Schedule {
     start: String,
@@ -16,6 +19,8 @@ struct Schedule {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+    let sound = Sound::load("assets/wrist-watch-alarm.mp3")?;
+    let sink = Sink::try_new(&stream_handle).unwrap();
 
     let schedule = Schedule {
         start: "07:30".to_string(),
@@ -49,9 +54,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let dt_string = dt.format("%Y-%m-%d %H:%M:%S");
             println!("{}: Play sound", dt_string);
-            let file = BufReader::new(File::open("assets/wrist-watch-alarm.mp3").unwrap());
-            let source = Decoder::new(file).unwrap();
-            let _ = stream_handle.play_raw(source.convert_samples());
+
+            sink.append(sound.decoder().convert_samples::<f32>());
+            sink.append(sound.decoder().convert_samples::<f32>());
 
             let Ok(_) = Notification::new()
                 .appname("Vaguthu")
@@ -62,10 +67,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Unable to send notification");
                 return;
             };
+
+            sink.sleep_until_end();
         },
     );
 
     loop {
         thread::sleep(std::time::Duration::new(60, 0));
+    }
+}
+
+pub struct Sound(Arc<Vec<u8>>);
+
+impl AsRef<[u8]> for Sound {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Sound {
+    pub fn load(filename: &str) -> io::Result<Sound> {
+        use std::fs::File;
+        let mut buf = Vec::new();
+        let mut file = File::open(filename)?;
+        file.read_to_end(&mut buf)?;
+        Ok(Sound(Arc::new(buf)))
+    }
+    pub fn cursor(&self) -> io::Cursor<Sound> {
+        io::Cursor::new(Sound(self.0.clone()))
+    }
+    pub fn decoder(&self) -> rodio::Decoder<io::Cursor<Sound>> {
+        rodio::Decoder::new(self.cursor()).unwrap()
     }
 }
